@@ -12,6 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - name: Checkout source
@@ -23,39 +24,39 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK packages
-        run: |
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
-
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
+      - name: Set up Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          if [ -z "$ANDROID_HOME" ]; then
+            echo "Android SDK tidak ditemukan."
+            exit 1
+          fi
+          SDKMANAGER=$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n 1)
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager tidak ditemukan."
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses || true
+          "$SDKMANAGER" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
       - name: Extract Android project
         run: |
           unzip -q AquaMonitorNative_AndroidStudio_Project.zip -d project
-          find project -maxdepth 4 -name settings.gradle -o -name settings.gradle.kts
+          test -f project/AquaMonitorNative/settings.gradle
 
       - name: Build APK
-        shell: bash
-        run: |
-          PROJECT_DIR="$(dirname "$(find project -maxdepth 5 \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)")"
-          if [ -z "$PROJECT_DIR" ] || [ "$PROJECT_DIR" = "." ]; then
-            echo "File konfigurasi Gradle tidak ditemukan."
-            exit 1
-          fi
-          echo "Project directory: $PROJECT_DIR"
-          cd "$PROJECT_DIR"
-          gradle assembleDebug
+        working-directory: project/AquaMonitorNative
+        run: gradle assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: AquaMonitor-debug-APK
-          path: project/**/build/outputs/apk/debug/*.apk
+          path: project/AquaMonitorNative/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
